@@ -24,7 +24,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.net.ssl.HttpsURLConnection;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -35,13 +34,13 @@ import org.json.JSONObject;
  * @author mnilsen
  */
 public class ArrivalMonitor {
-
     private static final long APPROACHING_LIMIT_MILLIS = 1000 * 45L;
     private static final int STALE_APPROACHING_MESSAGE = -10000;
     private static final long MAXIMUM_MESSAGE_TIME = 50 * 60 * 1000L; // Fifty minutes
 
     private AppPropertyManager props = new AppPropertyManager();
     private Timer monitorTimer = new Timer();
+    private PollingTask pollingTask = null;
     private Date lastUpdate;
 
     private boolean httpsMode = false;
@@ -73,8 +72,6 @@ public class ArrivalMonitor {
                 }
             });
         }
-
-        start();
     }
 
     private String buildDataUrl() {
@@ -84,11 +81,19 @@ public class ArrivalMonitor {
 
     public void start() {
         long period = Long.valueOf(props.getPropertyValue(AppProperty.ARRIVAL_POLLING_PERIOD));
-        monitorTimer.schedule(new PollingTask(), 5 * 1000L, period);
+        this.pollingTask = new PollingTask();
+        monitorTimer.schedule(this.pollingTask, 5 * 1000L, period);
+        Utils.getLogger().info(String.format("The Arrival Monitor has started."));
     }
 
     public void stop() {
-        monitorTimer.cancel();
+        if(this.pollingTask != null) this.pollingTask.cancel();
+        this.pollingTask = null;
+        
+        if(this.monitorTimer != null)
+          monitorTimer.cancel();
+        
+        Utils.getLogger().info(String.format("The Arrival Monitor has stopped."));
     }
 
     class PollingTask extends TimerTask {
@@ -171,20 +176,25 @@ public class ArrivalMonitor {
 
                 buff.append("Skipping repeated 'Approaching' alert\n");
 
-                buff.append(String.format("generated APPROACHING message\n.", "args"));
+                buff.append(String.format("Generated APPROACHING message\n", "args"));
             }
 
             if (millis > APPROACHING_LIMIT_MILLIS && millis < MAXIMUM_MESSAGE_TIME) {
                 if (mins <= 0) {
                     mins = 1;
                 }
-                buff.append(String.format("generated WILL ARRIVE message for %s mins., NEXT = %s\n.", mins, next));
+                buff.append(String.format("Generated WILL ARRIVE message for %s mins., NEXT = %s\n", mins, next));
             }
 
         }
 
         Utils.getLogger().info(buff.toString());
 
+    }
+    
+    public boolean isPollingActive()
+    {
+        return this.pollingTask != null;
     }
 
 }
